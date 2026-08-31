@@ -53,14 +53,15 @@ header .ai.on{color:var(--cool)}
 .g-pt{fill:none;stroke:#ffffff40;stroke-width:.6}
 .g-pt.on{fill:var(--accent);stroke:var(--accent)}
 .subj{fill:none;stroke:var(--accent);stroke-width:.8;opacity:.9}
-.horizon{stroke:#ffffff55;stroke-width:.7}
-.horizon.off{stroke:var(--accent)}
+.horizon{stroke:#7ecb8a;stroke-width:.9}
+.horizon.off{stroke:var(--accent);stroke-width:.9}
 
 /* badge dentro mirino */
 .vf-badge{position:absolute;font-size:11px;font-weight:500;padding:3px 8px;border-radius:6px;background:#000000a6;backdrop-filter:blur(4px);color:var(--ink)}
 #evBadge{left:10px;bottom:10px;color:var(--accent)}
 #levelBadge{top:10px;left:50%;transform:translateX(-50%);color:#fff}
 #levelBadge.off{color:var(--accent)}
+#levelBadge.level-ok{color:#7ecb8a}
 #spotHint{right:10px;top:10px;color:var(--dim);display:none}
 #focusRing{position:absolute;width:64px;height:64px;border:2px solid var(--accent);border-radius:50%;transform:translate(-50%,-50%) scale(1.4);opacity:0;transition:transform .3s,opacity .3s;pointer-events:none}
 #focusRing.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
@@ -464,12 +465,51 @@ viewfinder.addEventListener("pointerdown",async(e)=>{
 });
 
 /* ============ TILT / LIVELLA ============ */
-let deviceRoll=null;
+let deviceRoll=null, rollSmooth=null;
+function applyRoll(raw){
+  // smoothing per togliere il tremolio
+  rollSmooth = rollSmooth===null ? raw : rollSmooth*0.82 + raw*0.18;
+  deviceRoll = rollSmooth;
+}
 function initTilt(){
-  function h(e){ if(e.gamma!=null) deviceRoll=e.gamma; }
-  if(typeof DeviceOrientationEvent!=="undefined"&&DeviceOrientationEvent.requestPermission){
-    DeviceOrientationEvent.requestPermission().then(p=>{if(p==="granted")window.addEventListener("deviceorientation",h);}).catch(()=>{});
-  }else{ window.addEventListener("deviceorientation",h); }
+  // 1) ACCELEROMETRO (gravità): la via giusta per una livella, robusta in verticale
+  function onMotion(e){
+    const g = e.accelerationIncludingGravity;
+    if(!g || g.x==null || g.y==null) return;
+    // telefono tenuto verticale per scattare: l'inclinazione sx/dx dell'orizzonte
+    // è l'angolo del vettore gravità nel piano schermo (x,y).
+    // atan2(x, y): 0° = perfettamente dritto (gravità lungo -y), + = ruotato in un senso
+    let ang = Math.atan2(g.x, g.y) * 180/Math.PI;
+    // atan2(x,y) dà ~180° quando in piedi; normalizzo intorno allo zero verticale
+    ang = ang - 180;
+    if(ang < -180) ang += 360;
+    if(ang > 180) ang -= 360;
+    // ora ang≈0 quando il telefono è verticale e dritto; inverto segno per intuitività
+    applyRoll(-ang);
+  }
+  // 2) fallback: orientamento, ma calcolato bene per la posa verticale
+  function onOrient(e){
+    if(e.beta==null || e.gamma==null) return;
+    // in posa verticale l'inclinazione laterale ≈ gamma, ma corretta col segno di beta
+    let roll = e.gamma;
+    if(e.beta < 0) roll = (e.gamma>0? 180-e.gamma : -180-e.gamma);
+    applyRoll(roll);
+  }
+  function attach(){
+    if(window.DeviceMotionEvent) window.addEventListener("devicemotion", onMotion);
+    window.addEventListener("deviceorientation", onOrient);
+  }
+  // iOS: permesso per entrambi i sensori
+  const needMotionPerm = typeof DeviceMotionEvent!=="undefined" && DeviceMotionEvent.requestPermission;
+  const needOrientPerm = typeof DeviceOrientationEvent!=="undefined" && DeviceOrientationEvent.requestPermission;
+  if(needMotionPerm || needOrientPerm){
+    Promise.all([
+      needMotionPerm? DeviceMotionEvent.requestPermission().catch(()=>"denied") : Promise.resolve("granted"),
+      needOrientPerm? DeviceOrientationEvent.requestPermission().catch(()=>"denied") : Promise.resolve("granted")
+    ]).then(()=>attach());
+  }else{
+    attach();
+  }
 }
 
 /* ============ MobileNet ============ */
@@ -696,10 +736,19 @@ function drawOverlay(){
   }
   if(showSubj&&subjPos)el+='<circle class="subj" cx="'+(subjPos.x*100)+'" cy="'+(subjPos.y*100)+'" r="4"/>';
   if(showLevel&&deviceRoll!=null){
-    const ang=Math.max(-30,Math.min(30,deviceRoll)),rad=ang*Math.PI/180,dx=Math.cos(rad)*30,dy=Math.sin(rad)*30,off=Math.abs(ang)>2?" off":"";
-    el+='<line class="horizon'+off+'" x1="'+(50-dx)+'" y1="'+(50-dy)+'" x2="'+(50+dx)+'" y2="'+(50+dy)+'"/>';
-    levelBadge.textContent=Math.abs(ang)<=1?"in bolla":(ang>0?"inclina "+ang.toFixed(0)+"°":"inclina "+Math.abs(ang).toFixed(0)+"°");
-    levelBadge.className="vf-badge"+(Math.abs(ang)>2?" off":"");
+    const ang=Math.max(-45,Math.min(45,deviceRoll)),rad=ang*Math.PI/180,dx=Math.cos(rad)*32,dy=Math.sin(rad)*32;
+    const level=Math.abs(ang)<=1.2;
+    el+='<line class="horizon'+(level?'':' off')+'" x1="'+(50-dx)+'" y1="'+(50-dy)+'" x2="'+(50+dx)+'" y2="'+(50+dy)+'"/>';
+    // tacca di riferimento orizzontale fissa al centro (guida)
+    el+='<line x1="42" y1="50" x2="58" y2="50" stroke="#ffffff30" stroke-width="0.5"/>';
+    if(level){
+      levelBadge.textContent="in bolla ✓";
+      levelBadge.className="vf-badge level-ok";
+    }else{
+      const arrow = ang>0 ? "↺" : "↻";
+      levelBadge.textContent=arrow+" "+Math.abs(ang).toFixed(0)+"°";
+      levelBadge.className="vf-badge off";
+    }
   }
   ovSvg.innerHTML=el;
 }
