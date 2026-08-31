@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d10">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Luce">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Luce</title>
+<style>
+:root{
+  --bg:#0b0d10; --surface:#14171c; --surface2:#1a1e24; --line:#232830; --line2:#313743;
+  --ink:#e6e9ee; --dim:#8a93a0; --dimmer:#5a626e;
+  --accent:#e8b64c; --accent-dim:#e8b64c1a; --cool:#6fb3c4; --warn:#e5675b;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  min-height:100dvh;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  line-height:1.4;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:520px;margin:0 auto;padding:16px 16px 48px}
+
+/* header minimale */
+header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;padding:0 2px}
+header h1{font-size:19px;font-weight:600;letter-spacing:.5px;margin:0}
+header .state{font-size:12px;color:var(--dim);display:flex;align-items:center;gap:7px}
+header .state .dot{width:7px;height:7px;border-radius:50%;background:var(--dimmer)}
+header .state.live .dot{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+header .ai{font-size:10.5px;color:var(--dimmer);margin-left:2px}
+header .ai.on{color:var(--cool)}
+
+/* mirino */
+.viewfinder{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:4/5;margin-bottom:14px}
+#cam{width:100%;height:100%;object-fit:cover;display:none}
+.viewfinder.on #cam{display:block}
+.vf-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--dim);padding:24px;text-align:center}
+.vf-empty svg{opacity:.5}
+.vf-empty p{font-size:13.5px;margin:0;max-width:24ch}
+
+/* overlay composizione - discreto */
+.overlay{position:absolute;inset:0;pointer-events:none;display:none}
+.viewfinder.on .overlay{display:block}
+.overlay svg{width:100%;height:100%}
+.g-line{stroke:#ffffff26;stroke-width:.5}
+.g-pt{fill:none;stroke:#ffffff40;stroke-width:.6}
+.g-pt.on{fill:var(--accent);stroke:var(--accent)}
+.subj{fill:none;stroke:var(--accent);stroke-width:.8;opacity:.9}
+.horizon{stroke:#ffffff55;stroke-width:.7}
+.horizon.off{stroke:var(--accent)}
+
+/* badge dentro mirino */
+.vf-badge{position:absolute;font-size:11px;font-weight:500;padding:3px 8px;border-radius:6px;background:#000000a6;backdrop-filter:blur(4px);color:var(--ink)}
+#evBadge{left:10px;bottom:10px;color:var(--accent)}
+#levelBadge{top:10px;left:50%;transform:translateX(-50%);color:#fff}
+#levelBadge.off{color:var(--accent)}
+#spotHint{right:10px;top:10px;color:var(--dim);display:none}
+#focusRing{position:absolute;width:64px;height:64px;border:2px solid var(--accent);border-radius:50%;transform:translate(-50%,-50%) scale(1.4);opacity:0;transition:transform .3s,opacity .3s;pointer-events:none}
+#focusRing.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+
+/* barra controlli mirino - icone sobrie */
+.vf-tools{display:flex;gap:2px;margin-bottom:16px;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:4px}
+.vf-tools button{
+  flex:1;background:none;border:none;color:var(--dim);font-size:11px;font-weight:500;
+  padding:9px 4px;border-radius:8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:.12s;
+}
+.vf-tools button svg{width:18px;height:18px}
+.vf-tools button[aria-pressed="true"]{background:var(--surface2);color:var(--ink)}
+.vf-tools button[aria-pressed="true"] svg{stroke:var(--accent)}
+.vf-tools button:active{transform:scale(.96)}
+
+/* azione principale */
+.actions{display:flex;gap:10px;margin-bottom:20px}
+.actions .primary{
+  flex:1;background:var(--accent);color:#1a1205;border:none;border-radius:11px;
+  padding:15px;font-size:15px;font-weight:600;cursor:pointer;letter-spacing:.2px;
+}
+.actions .primary.stop{background:var(--surface2);color:var(--ink);border:1px solid var(--line2)}
+.actions .ghost{
+  background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:11px;
+  padding:15px 18px;font-size:14px;font-weight:500;cursor:pointer;
+}
+.actions .ghost:disabled{opacity:.35}
+.actions button:active{transform:scale(.98)}
+
+/* readout esposizione - il pezzo forte, pulito */
+.exposure{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px 18px;margin-bottom:14px}
+.exposure .triad{display:flex;justify-content:space-between;align-items:flex-end}
+.exposure .cell{text-align:center;flex:1}
+.exposure .cell .label{font-size:10.5px;color:var(--dimmer);letter-spacing:.4px;margin-bottom:6px}
+.exposure .cell .num{font-size:29px;font-weight:300;letter-spacing:-.5px;line-height:1;font-feature-settings:"tnum"}
+.exposure .cell .num.warn{color:var(--warn)}
+.exposure .cell .sep{color:var(--line2);font-size:20px;font-weight:200}
+.exposure .cell.small{flex:0 0 20px}
+.exposure .real{margin-top:14px;padding-top:13px;border-top:1px solid var(--line);font-size:11.5px;color:var(--cool);display:none;justify-content:center;gap:14px}
+.exposure .real.on{display:flex}
+.exposure .real b{color:var(--ink);font-weight:600}
+
+/* chip sotto esposizione */
+.flags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.flag{font-size:11px;padding:5px 10px;border-radius:7px;background:var(--surface);border:1px solid var(--line);color:var(--dim)}
+.flag.warn{color:var(--warn);border-color:#4a2f2c}
+.flag.good{color:var(--accent);border-color:#4a3f22}
+
+/* sezioni */
+.section{margin-bottom:18px}
+.section-head{font-size:12px;color:var(--dim);margin:0 2px 9px;display:flex;justify-content:space-between;align-items:center}
+.section-head .pick{color:var(--ink);font-weight:500}
+
+/* chips soggetto/condizione/obiettivo - sobri */
+.chips{display:flex;gap:7px;flex-wrap:wrap}
+.chip{
+  background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:9px 13px;font-size:13px;color:var(--dim);cursor:pointer;transition:.12s;
+}
+.chip:active{transform:scale(.97)}
+.chip[aria-pressed="true"]{border-color:var(--accent);color:var(--ink);background:var(--accent-dim)}
+.chip.two{display:flex;flex-direction:column;gap:1px;text-align:left;padding:9px 13px}
+.chip.two small{font-size:10.5px;color:var(--dimmer)}
+.chip[aria-pressed="true"].two small{color:var(--accent)}
+
+/* histogram */
+.histo{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px;display:none}
+.histo.on{display:block}
+.histo canvas{width:100%;height:60px;display:block;border-radius:4px}
+.histo .scale{display:flex;justify-content:space-between;font-size:10px;color:var(--dimmer);margin-top:5px}
+.histo .verdict{margin-top:10px;font-size:12.5px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.histo .verdict .msg{color:var(--dim)}
+.histo .verdict .adv{color:var(--accent);font-weight:500}
+
+/* card consigli */
+.advice{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 16px;margin-bottom:14px}
+.advice h3{font-size:13px;font-weight:600;margin:0 0 4px;color:var(--ink)}
+.advice .scene-tag{font-size:11px;color:var(--accent);font-weight:500}
+.advice ul{margin:10px 0 0;padding:0;list-style:none}
+.advice li{font-size:13px;color:var(--dim);padding:5px 0 5px 16px;position:relative;line-height:1.45}
+.advice li::before{content:"";position:absolute;left:2px;top:11px;width:5px;height:5px;border-radius:50%;background:var(--line2)}
+.advice li.live::before{background:var(--accent)}
+.advice li b{color:var(--ink);font-weight:600}
+
+/* modalità sony */
+.sony{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.sony h3{font-size:13px;margin:0 0 2px;color:var(--ink);font-weight:600}
+.sony .sub{font-size:11px;color:var(--dim);margin:0 0 13px}
+.sony .vals{display:flex;justify-content:space-between;margin-bottom:12px}
+.sony .v{text-align:center;flex:1}
+.sony .v .l{font-size:10px;color:var(--dimmer);margin-bottom:4px}
+.sony .v .n{font-size:17px;font-weight:400;font-feature-settings:"tnum"}
+.sony .copy{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 13px}
+.sony .copy .s{flex:1;font-size:13px;font-feature-settings:"tnum"}
+.sony .copy button{background:var(--accent);color:#1a1205;border:none;border-radius:7px;padding:8px 13px;font-size:12px;font-weight:600;cursor:pointer}
+
+.foot{color:var(--dimmer);font-size:11px;text-align:center;margin-top:20px;line-height:1.5}
+
+/* slider luce manuale */
+.manual-light{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 15px;margin-bottom:14px}
+.manual-light .top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:8px}
+.manual-light .top .lbl{color:var(--dim)}
+.manual-light .top .v{color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent);margin:2px 0}
+.manual-light .ends{display:flex;justify-content:space-between;font-size:10px;color:var(--dimmer)}
+.auto-toggle{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--dim);margin-bottom:14px;padding:0 2px}
+.auto-toggle input{accent-color:var(--accent);width:17px;height:17px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Luce</h1>
+  <div class="state" id="state"><span id="stateTxt">Pronto</span><span class="dot"></span></div>
+</header>
+<div class="ai" id="aiState" style="text-align:right;margin:-12px 2px 14px">riconoscimento: inattivo</div>
+
+<div class="viewfinder" id="viewfinder">
+  <video id="cam" playsinline muted autoplay></video>
+  <div class="vf-empty" id="vfEmpty">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    <p>Inquadra la scena e avvia l'esposimetro per leggere la luce dal vivo.</p>
+  </div>
+  <div class="overlay" id="overlay"><svg viewBox="0 0 100 100" preserveAspectRatio="none" id="ovSvg"></svg></div>
+  <div class="vf-badge" id="evBadge" style="display:none">EV --</div>
+  <div class="vf-badge" id="levelBadge" style="display:none"></div>
+  <div class="vf-badge" id="spotHint">tocca per misurare qui</div>
+  <div id="focusRing"></div>
+</div>
+
+<div class="vf-tools">
+  <button id="tGrid" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>Griglia</button>
+  <button id="tLevel" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12h18M12 8v8"/><circle cx="12" cy="12" r="9"/></svg>Livella</button>
+  <button id="tSubj" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Soggetto</button>
+  <button id="tSpot" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9"/></svg>Spot</button>
+</div>
+
+<div class="actions">
+  <button class="primary" id="startBtn">Avvia esposimetro</button>
+  <button class="ghost" id="lockBtn" disabled>Blocca</button>
+  <button class="ghost" id="switchBtn" disabled>Camera</button>
+</div>
+
+<div id="output"></div>
+
+<label class="auto-toggle"><input type="checkbox" id="autoChk" checked> Riconosci scena, focale e condizione in automatico</label>
+
+<div class="section">
+  <div class="section-head"><span>Soggetto</span><span class="pick" id="sceneVal">Paesaggio</span></div>
+  <div class="chips" id="scene"></div>
+</div>
+<div class="section">
+  <div class="section-head"><span>Condizione</span><span class="pick" id="condVal">Normale</span></div>
+  <div class="chips" id="cond"></div>
+</div>
+<div class="section">
+  <div class="section-head"><span>Obiettivo</span><span class="pick" id="lensVal">E PZ 16-50</span></div>
+  <div class="chips" id="lens"></div>
+  <div class="manual-light" id="lensManual" style="display:none;margin-top:10px">
+    <div class="top"><span class="lbl">Apertura max f/<span id="fminV">3.5</span></span><span class="lbl">min f/<span id="fmaxV">22</span></span></div>
+    <input type="range" min="10" max="80" value="35" step="1" id="fmin">
+    <input type="range" min="80" max="320" value="220" step="10" id="fmax">
+  </div>
+</div>
+<div class="section">
+  <div class="section-head"><span>Focale</span><span class="pick" id="focalVal">24 mm</span></div>
+  <div class="manual-light">
+    <div class="chips" id="focals" style="margin-bottom:10px"></div>
+    <input type="range" min="12" max="600" value="24" step="1" id="focal">
+    <div class="ends"><span>12</span><span>300</span><span>600 mm</span></div>
+  </div>
+</div>
+
+<div class="manual-light" id="manualLight">
+  <div class="top"><span class="lbl" id="lightLabel">Nuvoloso</span><span class="v" id="evVal">EV 12</span></div>
+  <input type="range" min="0" max="15" value="12" step="1" id="light">
+  <div class="ends"><span>notte</span><span>interni</span><span>sole</span></div>
+</div>
+
+<p class="foot">Esposimetro a luce riflessa (grigio medio 18%). Per neve o controluce, usa le condizioni. Verifica sempre con l'istogramma.</p>
+
+<canvas id="cv" width="96" height="76" style="display:none"></canvas>
+<canvas id="histoCanvas" width="256" height="60" style="display:none"></canvas>
+</div>
+
+<script src="vendor/tf.min.js"></script>
+<script src="vendor/mobilenet.min.js"></script>
+<script>
+/* ============ DATI ============ */
+const SCENES={
+  landscape:{label:"Paesaggio",sub:"tutto a fuoco",priority:"aperture",targetF:8,note:"Diaframma chiuso per profondità estesa."},
+  portrait:{label:"Ritratto",sub:"sfondo morbido",priority:"aperture",targetF:2.0,note:"Diaframma aperto per staccare il soggetto."},
+  street:{label:"Street",sub:"reattivo",priority:"shutter",targetF:8,freeze:1/250,note:"Zona a fuoco ampia e tempo pronto."},
+  sport:{label:"Sport",sub:"congela il moto",priority:"shutter",targetF:4,freeze:1/1000,note:"Tempo molto rapido per bloccare l'azione."},
+  wildlife:{label:"Wildlife",sub:"tele",priority:"shutter",targetF:5.6,freeze:1/1000,note:"Tempo alto per moto e mosso da braccio."},
+  macro:{label:"Macro",sub:"ravvicinato",priority:"aperture",targetF:11,freeze:1/200,note:"Diaframma chiuso per guadagnare profondità."},
+  architecture:{label:"Architettura",sub:"linee nitide",priority:"aperture",targetF:8,note:"Nitidezza uniforme sull'edificio."},
+  night:{label:"Notturna",sub:"poca luce",priority:"aperture",targetF:2.8,note:"Apertura aperta, ISO alto, posa lunga."},
+  event:{label:"Interni",sub:"persone",priority:"shutter",targetF:2.8,freeze:1/125,note:"Apertura aperta e ISO alto per congelare le persone."},
+  general:{label:"Generico",sub:"versatile",priority:"shutter",targetF:5.6,note:"Priorità al tempo per evitare il mosso."}
+};
+const CONDS={
+  normal:{label:"Normale",ec:0,note:""},
+  backlight:{label:"Controluce",ec:1.5,note:"Apri circa 1.5 stop o il soggetto resta scuro."},
+  snow:{label:"Neve o sabbia",ec:1.5,note:"Il bianco inganna l'esposimetro: compensa +1.5 stop."},
+  sunset:{label:"Tramonto",ec:-0.5,note:"Chiudi mezzo stop per saturare il cielo."},
+  spotlight:{label:"Soggetto in luce",ec:-1,note:"Sottoesponi per non bruciare il soggetto illuminato."}
+};
+const LENSES={
+  sel1650:{label:"E PZ 16-50",sub:"f/3.5-5.6",fmin:3.5,fmax:22,focRange:[24,75]},
+  sel1855:{label:"E 18-55",sub:"f/3.5-5.6",fmin:3.5,fmax:22,focRange:[27,82]},
+  sel55210:{label:"E 55-210",sub:"f/4.5-6.3",fmin:4.5,fmax:32,focRange:[82,315]},
+  sel18135:{label:"E 18-135",sub:"f/3.5-5.6",fmin:3.5,fmax:22,focRange:[27,202]},
+  selp18105g:{label:"E PZ 18-105 G",sub:"f/4",fmin:4.0,fmax:22,focRange:[27,157]},
+  sel1655g:{label:"E 16-55 G",sub:"f/2.8",fmin:2.8,fmax:22,focRange:[24,82]},
+  sel1018:{label:"E 10-18",sub:"f/4 UWA",fmin:4.0,fmax:22,focRange:[15,27]},
+  sel35f18:{label:"E 35 f/1.8",sub:"fisso",fmin:1.8,fmax:22,focRange:[52,52]},
+  sel50f18:{label:"E 50 f/1.8",sub:"ritratti",fmin:1.8,fmax:22,focRange:[75,75]},
+  sel24f18z:{label:"E 24 f/1.8 ZA",sub:"Zeiss",fmin:1.8,fmax:22,focRange:[36,36]},
+  sel30m35:{label:"E 30 Macro",sub:"f/3.5 1:1",fmin:3.5,fmax:22,focRange:[45,45]},
+  manual:{label:"Manuale",sub:"imposta tu",fmin:3.5,fmax:22,focRange:[12,600]}
+};
+const EV100=[-4,-2,0,2,4,5,6,7,9,10,11,12,13,14,15,16];
+const LIGHTLBL=["Notte senza luna","Notte con luci","Crepuscolo","Interni scuri","Interni serali","Interni medi","Interni luminosi","Coperto scuro","Coperto","Nuvoloso","Nuvole chiare","Velato","Sole velato","Ombra al sole","Sole pieno","Neve al sole"];
+const ISO_STEPS=[100,200,400,800,1600,3200,6400,12800,25600];
+const SH_STEPS=[30,15,8,4,2,1,1/2,1/4,1/8,1/15,1/30,1/60,1/125,1/250,1/500,1/1000,1/2000,1/4000,1/8000];
+const A6100_ISO=[100,125,160,200,250,320,400,500,640,800,1000,1250,1600,2000,2500,3200,4000,5000,6400,8000,10000,12800,16000,20000,25600,32000];
+const A6100_SH=[30,25,20,15,13,10,8,6,5,4,3.2,2.5,2,1.6,1.3,1,0.8,1/1.6,1/2,1/2.5,1/3,1/4,1/5,1/6,1/8,1/10,1/13,1/15,1/20,1/25,1/30,1/40,1/50,1/60,1/80,1/100,1/125,1/160,1/200,1/250,1/320,1/400,1/500,1/640,1/800,1/1000,1/1250,1/1600,1/2000,1/2500,1/3200,1/4000];
+const F_STEPS=[1.4,1.6,1.8,2.0,2.2,2.5,2.8,3.2,3.5,4.0,4.5,5.0,5.6,6.3,7.1,8.0,9.0,10,11,13,14,16,18,20,22,25,29,32];
+
+function log2(x){return Math.log(x)/Math.LN2;}
+function nearestShutter(t){return SH_STEPS.reduce((a,b)=>Math.abs(b-t)<Math.abs(a-t)?b:a);}
+function snap(arr,v){return arr.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);}
+function fmtShutter(t){if(t>=1)return t+'"';return "1/"+Math.round(1/t);}
+function fmtShutterSony(t){if(t>=1)return (Number.isInteger(t)?t:t.toFixed(t<10?1:0))+'"';return "1/"+Math.round(1/t);}
+function fmtF(f){return "f/"+(f%1===0?f.toFixed(0):f.toFixed(1));}
+function clampF(f){const L=LENSES[lens];let v=Math.max(L.fmin,Math.min(L.fmax,f));return F_STEPS.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);}
+
+/* ============ STATO ============ */
+let scene="landscape",cond="normal",focal=24,ev=12,lens="sel1650";
+let measuring=false,locked=false;
+let sceneManual=false,condManual=false;
+
+/* ============ DOM refs ============ */
+const cam=document.getElementById("cam");
+const cv=document.getElementById("cv");
+const ctx=cv.getContext("2d",{willReadFrequently:true});
+const viewfinder=document.getElementById("viewfinder");
+const vfEmpty=document.getElementById("vfEmpty");
+const startBtn=document.getElementById("startBtn");
+const lockBtn=document.getElementById("lockBtn");
+const switchBtn=document.getElementById("switchBtn");
+const stateEl=document.getElementById("state");
+const stateTxt=document.getElementById("stateTxt");
+const aiState=document.getElementById("aiState");
+const evBadge=document.getElementById("evBadge");
+const levelBadge=document.getElementById("levelBadge");
+const spotHint=document.getElementById("spotHint");
+const focusRing=document.getElementById("focusRing");
+const ovSvg=document.getElementById("ovSvg");
+const out=document.getElementById("output");
+
+/* ============ chips build ============ */
+const sceneEl=document.getElementById("scene");
+Object.entries(SCENES).forEach(([k,v])=>{
+  const b=document.createElement("button");b.className="chip two";b.setAttribute("aria-pressed",k===scene);
+  b.innerHTML=v.label+"<small>"+v.sub+"</small>";
+  b.onclick=()=>{scene=k;sceneManual=true;[...sceneEl.children].forEach(c=>c.setAttribute("aria-pressed","false"));b.setAttribute("aria-pressed","true");document.getElementById("sceneVal").textContent=v.label;render();};
+  sceneEl.appendChild(b);
+});
+const condEl=document.getElementById("cond");
+Object.entries(CONDS).forEach(([k,v])=>{
+  const b=document.createElement("button");b.className="chip";b.setAttribute("aria-pressed",k===cond);b.textContent=v.label;
+  b.onclick=()=>{cond=k;condManual=true;[...condEl.children].forEach(c=>c.setAttribute("aria-pressed","false"));b.setAttribute("aria-pressed","true");document.getElementById("condVal").textContent=v.label;render();};
+  condEl.appendChild(b);
+});
+const lensEl=document.getElementById("lens");
+const lensManual=document.getElementById("lensManual");
+Object.entries(LENSES).forEach(([k,v])=>{
+  const b=document.createElement("button");b.className="chip two";b.setAttribute("aria-pressed",k===lens);
+  b.innerHTML=v.label+"<small>"+v.sub+"</small>";
+  b.onclick=()=>{lens=k;[...lensEl.children].forEach(c=>c.setAttribute("aria-pressed","false"));b.setAttribute("aria-pressed","true");document.getElementById("lensVal").textContent=v.label;lensManual.style.display=k==="manual"?"block":"none";const fr=v.focRange;if(fr[0]===fr[1]&&fr[0]>=12){focal=fr[0];focalRange.value=focal;syncFocal();}render();};
+  lensEl.appendChild(b);
+});
+const fminR=document.getElementById("fmin"),fmaxR=document.getElementById("fmax"),fminV=document.getElementById("fminV"),fmaxV=document.getElementById("fmaxV");
+fminR.oninput=()=>{LENSES.manual.fmin=(+fminR.value)/10;fminV.textContent=LENSES.manual.fmin.toFixed(1);render();};
+fmaxR.oninput=()=>{LENSES.manual.fmax=(+fmaxR.value)/10;fmaxV.textContent=LENSES.manual.fmax.toFixed(0);render();};
+
+const FPRE=[16,24,35,50,85,135,200,400];
+const focalsEl=document.getElementById("focals");
+const focalRange=document.getElementById("focal");
+FPRE.forEach(f=>{
+  const b=document.createElement("button");b.className="chip";b.setAttribute("aria-pressed",f===focal);b.textContent=f;
+  b.onclick=()=>{focal=f;focalRange.value=f;syncFocal();render();};
+  focalsEl.appendChild(b);
+});
+function syncFocal(){document.getElementById("focalVal").textContent=focal+" mm";[...focalsEl.children].forEach(c=>c.setAttribute("aria-pressed",parseInt(c.textContent)===focal));}
+focalRange.oninput=()=>{focal=+focalRange.value;syncFocal();render();};
+
+const lightRange=document.getElementById("light");
+lightRange.oninput=()=>{ev=+lightRange.value;document.getElementById("lightLabel").textContent=LIGHTLBL[ev];document.getElementById("evVal").textContent="EV "+EV100[ev];render();};
+
+/* ============ toggle overlay ============ */
+let showGrid=true,showLevel=true,showSubj=true,meterMode="center";
+let spotX=.5,spotY=.5;
+const tGrid=document.getElementById("tGrid"),tLevel=document.getElementById("tLevel"),tSubj=document.getElementById("tSubj"),tSpot=document.getElementById("tSpot");
+tGrid.onclick=()=>{showGrid=!showGrid;tGrid.setAttribute("aria-pressed",showGrid);};
+tLevel.onclick=()=>{showLevel=!showLevel;tLevel.setAttribute("aria-pressed",showLevel);levelBadge.style.display=showLevel&&measuring?"block":"none";};
+tSubj.onclick=()=>{showSubj=!showSubj;tSubj.setAttribute("aria-pressed",showSubj);};
+tSpot.onclick=()=>{meterMode=meterMode==="spot"?"center":"spot";tSpot.setAttribute("aria-pressed",meterMode==="spot");spotHint.style.display=meterMode==="spot"?"block":"none";if(meterMode==="center"){spotX=spotY=.5;}};
+
+/* ============ auto toggle ============ */
+let autoOn=true;
+document.getElementById("autoChk").onchange=e=>{autoOn=e.target.checked;};
+function setSceneAuto(k){scene=k;const v=SCENES[k];[...sceneEl.children].forEach(c=>c.setAttribute("aria-pressed",c.childNodes[0].textContent===v.label));document.getElementById("sceneVal").textContent=v.label;}
+function setCondAuto(k){cond=k;const v=CONDS[k];[...condEl.children].forEach(c=>c.setAttribute("aria-pressed",c.textContent===v.label));document.getElementById("condVal").textContent=v.label;}
+
+/* ============ SENSORI CAMERA REALI ============ */
+let stream=null,rafId=null,track=null,imageCapture=null,camCaps=null;
+let videoDevices=[],camIndex=0;
+let realISO=null,realShutter=null,realF=null,realFocal=null,baseFocal=26;
+
+async function startStream(constraints){
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  stream=await navigator.mediaDevices.getUserMedia({video:constraints,audio:false});
+  cam.srcObject=stream;track=stream.getVideoTracks()[0];
+  try{camCaps=track.getCapabilities?track.getCapabilities():null;}catch(e){camCaps=null;}
+  try{ if(window.ImageCapture) imageCapture=new ImageCapture(track); }catch(e){imageCapture=null;}
+  await cam.play();
+}
+async function enumerateCams(){
+  try{
+    const devs=await navigator.mediaDevices.enumerateDevices();
+    videoDevices=devs.filter(d=>d.kind==="videoinput");
+    switchBtn.disabled=videoDevices.length<2;
+  }catch(e){switchBtn.disabled=true;}
+}
+/* legge i settaggi reali esposti dalla camera */
+function readCameraSensors(){
+  if(!track||!track.getSettings)return;
+  const st=track.getSettings();
+  // esposizione reale
+  if(st.exposureTime){ realShutter = st.exposureTime>100? st.exposureTime/1e6 : st.exposureTime/1e4; }
+  if(st.iso) realISO=st.iso;
+  if(st.fNumber) realF=st.fNumber;
+  // zoom -> focale equivalente reale
+  if(st.zoom){ realFocal=Math.round(baseFocal*st.zoom); if(autoOn && Math.abs(realFocal-focal)>=2){focal=Math.min(600,Math.max(12,realFocal));focalRange.value=focal;syncFocal();} }
+}
+
+startBtn.onclick=async()=>{
+  if(measuring){stopCam();return;}
+  try{
+    await startStream({facingMode:{ideal:"environment"},width:{ideal:1280}});
+    measuring=true;locked=false;ensureModel();initTilt();await enumerateCams();
+    viewfinder.classList.add("on");vfEmpty.style.display="none";
+    stateEl.className="state live";stateTxt.textContent="Dal vivo";
+    evBadge.style.display="block";if(showLevel)levelBadge.style.display="block";
+    startBtn.textContent="Ferma";startBtn.className="primary stop";
+    lockBtn.disabled=false;
+    document.querySelector(".histo")&&document.querySelector(".histo").classList.add("on");
+    loop();
+  }catch(e){ stateTxt.textContent="Fotocamera non disponibile"; }
+};
+lockBtn.onclick=()=>{locked=!locked;lockBtn.textContent=locked?"Sblocca":"Blocca";stateTxt.textContent=locked?"Bloccato":"Dal vivo";};
+switchBtn.onclick=async()=>{
+  if(!measuring||videoDevices.length<2)return;
+  camIndex=(camIndex+1)%videoDevices.length;smoothEV=null;
+  try{ await startStream({deviceId:{exact:videoDevices[camIndex].deviceId}}); }catch(e){}
+};
+function stopCam(){
+  measuring=false;locked=false;
+  if(rafId)cancelAnimationFrame(rafId);
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  viewfinder.classList.remove("on");vfEmpty.style.display="flex";
+  stateEl.className="state";stateTxt.textContent="Pronto";
+  evBadge.style.display="none";levelBadge.style.display="none";
+  startBtn.textContent="Avvia esposimetro";startBtn.className="primary";
+  lockBtn.disabled=true;switchBtn.disabled=true;
+  document.querySelector(".histo")&&document.querySelector(".histo").classList.remove("on");
+}
+
+/* tap sul mirino: spot meter + focus reale dove disponibile */
+viewfinder.addEventListener("pointerdown",async(e)=>{
+  if(!measuring)return;
+  const rect=viewfinder.getBoundingClientRect();
+  const fx=(e.clientX-rect.left)/rect.width, fy=(e.clientY-rect.top)/rect.height;
+  spotX=Math.min(.92,Math.max(.08,fx));spotY=Math.min(.92,Math.max(.08,fy));
+  meterMode="spot";tSpot.setAttribute("aria-pressed",true);spotHint.style.display="block";
+  // anello focus
+  focusRing.style.left=(fx*100)+"%";focusRing.style.top=(fy*100)+"%";
+  focusRing.classList.remove("show");void focusRing.offsetWidth;focusRing.classList.add("show");
+  setTimeout(()=>focusRing.classList.remove("show"),700);
+  // messa a fuoco reale (dove il browser la espone)
+  try{
+    if(track&&camCaps&&camCaps.focusMode&&camCaps.focusMode.includes("single-shot")){
+      await track.applyConstraints({advanced:[{focusMode:"single-shot"},{pointsOfInterest:[{x:fx,y:fy}]}]});
+    }
+  }catch(e){}
+});
+
+/* ============ TILT / LIVELLA ============ */
+let deviceRoll=null;
+function initTilt(){
+  function h(e){ if(e.gamma!=null) deviceRoll=e.gamma; }
+  if(typeof DeviceOrientationEvent!=="undefined"&&DeviceOrientationEvent.requestPermission){
+    DeviceOrientationEvent.requestPermission().then(p=>{if(p==="granted")window.addEventListener("deviceorientation",h);}).catch(()=>{});
+  }else{ window.addEventListener("deviceorientation",h); }
+}
+
+/* ============ MobileNet ============ */
+let mlModel=null,mlLoading=false,mlReady=false,mlLastLabel="",mlLastScene=null,mlLastConf=0,mlBusy=false;
+const ML_MAP=[
+  {scene:"portrait",kw:["suit","gown","jersey","wig","sunglass","bikini","brassiere","groom","bridegroom","person","people","face","cardigan","sweatshirt","kimono","cowboy hat","bonnet","military uniform","academic gown","lab coat","poncho","jean","miniskirt","maillot","pajama","diaper","baby"]},
+  {scene:"landscape",kw:["alp","valley","volcano","cliff","promontory","seashore","sandbar","lakeside","geyser","mountain","coral reef","daisy","hay","rapeseed","meadow","mountain tent","lakeshore","sea","ocean","beach","desert","canyon","waterfall","glacier","forest","field","sky","horizon","valley","dam","breakwater","megalith"]},
+  {scene:"architecture",kw:["church","mosque","palace","monastery","castle","dome","triumphal arch","obelisk","tower","stupa","library","barn","greenhouse","planetarium","suspension bridge","viaduct","pier","bell cote","cinema","theater","altar","fountain","gazebo","patio","cliff dwelling","water tower","lighthouse","prison","boathouse","home theater","apartment","street sign"]},
+  {scene:"wildlife",kw:["kite","eagle","vulture","dog","cat","bird","fox","wolf","bear","deer","elephant","lion","tiger","zebra","giraffe","gorilla","monkey","hare","squirrel","jay","magpie","peacock","flamingo","pelican","owl","hawk","falcon","ostrich","penguin","koala","panda","leopard","cheetah","antelope","gazelle","bison","ram","ibex","hamster","hedgehog","otter","badger","retriever","terrier","spaniel","hound","husky","poodle","tabby","persian cat","siamese","lynx","cougar","chimpanzee","orangutan","macaque","goldfinch","robin","chickadee","hornbill","toucan","cockatoo","parrot","lorikeet","heron","crane","stork","swan","goose","duck","albatross"]},
+  {scene:"macro",kw:["bee","ant","fly","mantis","grasshopper","butterfly","dragonfly","ladybug","ladybird","spider","snail","caterpillar","cockroach","cricket","cicada","beetle","weevil","leaf beetle","damselfly","monarch","admiral","ringlet","lycaenid","sulphur butterfly","tick","centipede","scorpion"]},
+  {scene:"sport",kw:["ball","racket","bicycle","unicycle","ski","snowboard","surfboard","skateboard","basketball","soccer","volleyball","tennis","golf ball","ping-pong","rugby","baseball","puck","dumbbell","barbell","horizontal bar","balance beam","parallel bars","paddle","canoe","kayak","bobsled","dogsled","mountain bike","racer","gymnast","scuba"]},
+  {scene:"event",kw:["restaurant","plate","wine","cup","espresso","dining table","bakery","confectionery","meat loaf","pizza","hotdog","cheeseburger","guacamole","consomme","trifle","ice cream","banquet","goblet","cocktail shaker","red wine","beer glass","tray","soup bowl","mixing bowl","plate rack","menu","chocolate sauce","carbonara","burrito"]},
+  {scene:"street",kw:["traffic light","taxi","police van","trolleybus","minibus","parking meter","mailbox","fire hydrant","street sign","crosswalk","limousine","cab","recreational vehicle","moving van","tow truck","streetcar","fountain","umbrella","backpack","jinrikisha","moped","motor scooter","pay-phone","vending machine","barbershop","tobacco shop","bookshop"]},
+  {scene:"night",kw:["fireworks","candle","spotlight","torch","jack-o-lantern","sparkler","neon","lampshade","table lamp","street lamp","planetarium","comet","star"]}
+];
+/* oggetti -> etichetta italiana leggibile per il tip su misura */
+const OBJ_IT={
+  dog:"un cane", cat:"un gatto", bird:"un uccello", flower:"un fiore", daisy:"un fiore",
+  mountain:"una montagna", sea:"il mare", beach:"una spiaggia", church:"una chiesa",
+  pizza:"del cibo", plate:"un piatto", wine:"un bicchiere", bee:"un insetto",
+  butterfly:"una farfalla", bicycle:"una bici", ball:"una scena sportiva",
+  candle:"una candela", fireworks:"fuochi d'artificio", tree:"alberi", car:"un'auto"
+};
+function labelToScene(l){l=l.toLowerCase();for(const m of ML_MAP)for(const k of m.kw)if(l.includes(k))return m.scene;return null;}
+async function ensureModel(){
+  if(mlReady||mlLoading)return;
+  if(typeof mobilenet==="undefined"||typeof tf==="undefined"){aiState.textContent="riconoscimento: non caricato";return;}
+  mlLoading=true;aiState.textContent="riconoscimento: caricamento…";
+  try{ mlModel=await mobilenet.load({version:2,alpha:.5});mlReady=true;aiState.textContent="riconoscimento attivo";aiState.className="ai on"; }
+  catch(e){ aiState.textContent="riconoscimento non disponibile offline"; }
+  mlLoading=false;
+}
+let mlCondSuggest=null, mlTopObjects=[];
+/* condizione luce dedotta dagli oggetti visti */
+const ML_COND_MAP=[
+  {cond:"night", kw:["candle","fireworks","spotlight","sparkler","neon","torch","jack-o-lantern","star","comet"]},
+  {cond:"backlight", kw:["sunset","sunrise"]},
+  {cond:"snow", kw:["ski","snowmobile","snowplow","alp","glacier","snow","dogsled","bobsled","igloo"]},
+  {cond:"sunset", kw:["sunset","sunrise","lakeside seashore"]}
+];
+function labelToCond(l){l=l.toLowerCase();for(const m of ML_COND_MAP)for(const k of m.kw)if(l.includes(k))return m.cond;return null;}
+function objectIt(l){l=l.toLowerCase();for(const k in OBJ_IT)if(l.includes(k))return OBJ_IT[k];return null;}
+
+async function mlClassify(){
+  if(!mlReady||mlBusy||!cam.videoWidth)return;
+  mlBusy=true;
+  try{
+    // "bilanciato": 7 predizioni, abbastanza per multi-soggetto senza pesare troppo
+    const preds=await mlModel.classify(cam,7);
+    if(preds&&preds.length){
+      mlLastLabel=preds[0].className;
+      mlTopObjects=preds.slice(0,3).map(p=>p.className.split(",")[0]);
+      // voto pesato scena su TUTTE le predizioni (multi-soggetto)
+      const votes={};
+      for(const p of preds){const sc=labelToScene(p.className);if(sc)votes[sc]=(votes[sc]||0)+p.probability;}
+      let best=null,bv=0,second=0;
+      for(const k in votes){if(votes[k]>bv){second=bv;bv=votes[k];best=k;}else if(votes[k]>second)second=votes[k];}
+      mlLastScene=best;
+      // confidenza tiene conto di quanto il primo stacca il secondo
+      mlLastConf=best?Math.min(1,bv*(1+(bv-second))):0;
+      // condizione luce da AI
+      let cvotes={};
+      for(const p of preds){const cc=labelToCond(p.className);if(cc)cvotes[cc]=(cvotes[cc]||0)+p.probability;}
+      let cbest=null,cbv=0;for(const k in cvotes)if(cvotes[k]>cbv){cbv=cvotes[k];cbest=k;}
+      mlCondSuggest = (cbest&&cbv>=.15)?cbest:null;
+      // oggetto principale per il consiglio su misura
+      mlLastObject=null;
+      for(const p of preds){const o=objectIt(p.className);if(o){mlLastObject=o;break;}}
+    }
+  }catch(e){}
+  mlBusy=false;
+}
+let mlLastObject=null;
+
+/* ============ frameStats + classificatori ============ */
+function frameStats(vw,vh){
+  ctx.drawImage(cam,0,0,vw,vh,0,0,cv.width,cv.height);
+  const w=cv.width,h=cv.height,d=ctx.getImageData(0,0,w,h).data,n=w*h;
+  let sumR=0,sumG=0,sumB=0,sumL=0,warm=0,skin=0,bright=0,dark=0,sky=0,green=0,topL=0,botL=0,topN=0,botN=0,detail=0,dN=0;
+  const luma=new Float32Array(n);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const i=(y*w+x)*4,r=d[i],g=d[i+1],b=d[i+2],L=(0.2126*r+0.7152*g+0.0722*b)/255;
+    luma[y*w+x]=L;sumR+=r;sumG+=g;sumB+=b;sumL+=L;
+    if(r>g&&g>b&&(r-b)>40)warm++;
+    const Cb=128-.168736*r-.331264*g+.5*b,Cr=128+.5*r-.418688*g-.081312*b;
+    if(Cb>=77&&Cb<=135&&Cr>=133&&Cr<=180&&L>.15&&L<.95)skin++;
+    if(L>.85)bright++;if(L<.10)dark++;
+    if(y<h*.45&&b>g&&b>=r-8&&b>100&&L>.38)sky++;
+    if(g>r+8&&g>b+8&&g>60)green++;
+    if(y<h*.5){topL+=L;topN++;}else{botL+=L;botN++;}
+  }
+  for(let y=1;y<h;y++)for(let x=1;x<w;x++){const c=luma[y*w+x];detail+=Math.abs(c-luma[y*w+x-1])+Math.abs(c-luma[(y-1)*w+x]);dN++;}
+  const mR=sumR/n,mG=sumG/n,mB=sumB/n,mL=sumL/n;
+  const sat=(Math.max(mR,mG,mB)-Math.min(mR,mG,mB))/(Math.max(mR,mG,mB)+1);
+  return {mL,sat,mR,mG,mB,warmFrac:warm/n,skinFrac:skin/n,brightFrac:bright/n,darkFrac:dark/n,skyFrac:sky/n,greenFrac:green/n,topMeanL:topN?topL/topN:0,botMeanL:botN?botL/botN:0,detail:dN?detail/dN:0};
+}
+function classifyScene(st,evIdx){
+  const ev=EV100[evIdx],sc={landscape:0,portrait:0,night:0,street:0,architecture:0,event:0,general:.12},skyGrad=st.topMeanL-st.botMeanL;
+  if(ev<=3)sc.night+=1.1;else if(ev<=5)sc.night+=.7;else if(ev<=7&&st.mL<.16&&st.darkFrac>.4)sc.night+=.45;
+  if(st.skinFrac>.015)sc.portrait+=.45+Math.min(.5,st.skinFrac*4);
+  if(st.skinFrac>.012&&st.skyFrac<.08)sc.portrait+=.2;
+  if(st.skinFrac>.012&&st.detail<.07)sc.portrait+=.2;
+  if(st.skinFrac>.05)sc.portrait+=.25;
+  if(st.skyFrac>.05)sc.landscape+=.4+Math.min(.4,st.skyFrac*3);
+  if(skyGrad>.12&&ev>=10)sc.landscape+=.35+Math.min(.3,skyGrad);
+  if(st.greenFrac>.10)sc.landscape+=.3+Math.min(.3,st.greenFrac*1.5);
+  if(ev>=11&&st.detail>.06&&st.skinFrac<.03)sc.landscape+=.2;
+  if(ev>=10&&st.detail>.10&&st.greenFrac<.07&&st.skinFrac<.015)sc.architecture+=.45+Math.min(.35,(st.detail-.10)*4);
+  if(st.sat<.20&&st.detail>.10&&st.skyFrac<.20&&st.greenFrac<.06)sc.architecture+=.2;
+  if(ev>=9&&ev<=15&&st.detail>.075&&st.greenFrac<.10&&st.skinFrac<.02)sc.street+=.35+Math.min(.25,(st.detail-.075)*3);
+  if(ev>=6&&ev<=10&&st.skyFrac<.03&&skyGrad<.08&&st.greenFrac<.06&&st.darkFrac<.4)sc.event+=.45;
+  if(ev>=6&&ev<=11&&st.skinFrac>.02&&st.skyFrac<.03)sc.event+=.25;
+  let e=Object.entries(sc).sort((a,b)=>b[1]-a[1]);
+  return {scene:e[0][0],conf:Math.min(1,(e[0][1]-e[1][1])/Math.max(.35,e[0][1]))};
+}
+function classifyCond(st){
+  if(st.brightFrac>.30&&st.sat<.14&&st.mL>.60)return {cond:"snow",conf:.7};
+  if(st.warmFrac>.28&&st.mR>st.mB+30)return {cond:"sunset",conf:.6};
+  return {cond:"normal",conf:.5};
+}
+
+/* ============ SOLVER ============ */
+function solve(){
+  const sc=SCENES[scene],cc=CONDS[cond],EVt=EV100[ev]+cc.ec,handMin=1/focal,astroMax=500/focal,freeze=sc.freeze||null;
+  let iso=100,f=clampF(sc.targetF),t;
+  if(scene==="night"){
+    const wantT=Math.min(astroMax,25);
+    for(const c of ISO_STEPS){const tn=(f*f)/Math.pow(2,EVt)*(100/c);if(tn<=wantT||c===ISO_STEPS[ISO_STEPS.length-1]){iso=c;t=nearestShutter(Math.min(tn,wantT));break;}}
+    return build(iso,f,t,sc,cc,{handMin,astroMax,freeze,mode:"astro",fIdeal:sc.targetF});
+  }
+  let need=handMin;if(sc.priority==="shutter")need=Math.min(need,freeze||1/125);if(freeze)need=Math.min(need,freeze);
+  for(const c of ISO_STEPS){const tn=(f*f)/Math.pow(2,EVt)*(100/c);if(tn<=need||c===ISO_STEPS[ISO_STEPS.length-1]){iso=c;t=nearestShutter(tn);break;}}
+  return build(iso,f,t,sc,cc,{handMin,astroMax,freeze,mode:"day",fIdeal:sc.targetF});
+}
+function build(iso,f,t,sc,cc,e){
+  const lensLimited=e.fIdeal!=null&&Math.abs(f-e.fIdeal)>.15;
+  const blurRisk=e.mode!=="astro"&&t>e.handMin*1.3&&t>=1/60;
+  const freezeMiss=e.freeze&&t>e.freeze*1.05;
+  const needTripod=t>=1/15||(e.mode==="astro"&&t>1);
+  const isoHigh=iso>=6400;
+  return {iso,f,t,sc,cc,blurRisk,freezeMiss,needTripod,isoHigh,handMin:e.handMin,astroMax:e.astroMax,freeze:e.freeze,mode:e.mode,lensLimited,fIdeal:e.fIdeal};
+}
+
+/* ============ ISTOGRAMMA ============ */
+const histoCanvas=document.getElementById("histoCanvas");
+const histoCtx=histoCanvas.getContext("2d");
+let histoData=null,histoAdvice=0;
+function computeHisto(){
+  const d=ctx.getImageData(0,0,cv.width,cv.height).data;
+  const R=new Uint32Array(256),G=new Uint32Array(256),B=new Uint32Array(256),Lm=new Uint32Array(256);
+  for(let i=0;i<d.length;i+=4){R[d[i]]++;G[d[i+1]]++;B[d[i+2]]++;Lm[(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2])|0]++;}
+  return {R,G,B,Lm,total:d.length/4};
+}
+function exposureAdvice(){
+  if(!histoData)return 0;
+  const {Lm,total}=histoData;
+  const clipHi=(Lm[255]+Lm[254])/total,clipLo=(Lm[0]+Lm[1])/total;
+  let sum=0;for(let i=0;i<256;i++)sum+=i*Lm[i];const meanTone=sum/total/255;
+  if(clipHi>.05&&clipLo<.02)return -0.7;
+  if(clipLo>.08&&clipHi<.02)return +0.7;
+  if(meanTone>.7)return -0.3;
+  if(meanTone<.25)return +0.3;
+  return 0;
+}
+
+/* ============ COMPOSIZIONE overlay ============ */
+let subjPos=null;
+const COMP_TIPS={
+  landscape:["Orizzonte sul terzo alto se conta il cielo, sul basso se conta il primo piano","Aggiungi un elemento vicino per dare profondità","Abbassati per enfatizzare il primo piano"],
+  portrait:["Occhi sul terzo superiore, non al centro","Lascia spazio nella direzione dello sguardo","Sali un po' sopra l'altezza occhi"],
+  street:["Componi e aspetta che il soggetto entri nel punto forte","Sfrutta le linee che guidano l'occhio","Tieni lo sfondo pulito"],
+  architecture:["Tieni la camera dritta per evitare linee cadenti","Cerca simmetria o ripetizioni","Arretra invece di inclinare in alto"],
+  wildlife:["Spazio davanti all'animale, verso il suo sguardo","Fuoco sull'occhio","Scendi al suo livello"],
+  macro:["Allontana lo sfondo per pulirlo","Fuoco sul punto chiave, non al centro","Scatta nell'attimo di calma"],
+  night:["Stabilizza con un appoggio","Includi un primo piano per dare scala","Metti le luci sui punti forti"],
+  sport:["Spazio nella direzione del movimento","Anticipa l'azione","Punto forte sul soggetto in arrivo"],
+  event:["Cerca la luce sui volti","Avvicinati e riempi l'inquadratura","Sfondo non distraente"],
+  general:["Soggetto sui punti d'incrocio","Orizzonte dritto","Sfondo pulito"]
+};
+function detectSubject(vw,vh){
+  const w=cv.width,h=cv.height,d=ctx.getImageData(0,0,w,h).data;
+  let sx=0,sy=0,sw=0;
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){
+    const i=(y*w+x)*4,r=d[i],g=d[i+1],b=d[i+2];
+    const Cb=128-.168736*r-.331264*g+.5*b,Cr=128+.5*r-.418688*g-.081312*b;
+    let wgt=0;
+    if(Cb>=77&&Cb<=135&&Cr>=133&&Cr<=180)wgt=3;
+    else{const L=.2126*r+.7152*g+.0722*b,Lr=.2126*d[i+4]+.7152*d[i+5]+.0722*d[i+6],Ld=.2126*d[i+w*4]+.7152*d[i+w*4+1]+.0722*d[i+w*4+2];wgt=Math.min(2,(Math.abs(L-Lr)+Math.abs(L-Ld))/60);}
+    sx+=x*wgt;sy+=y*wgt;sw+=wgt;
+  }
+  if(sw<5)return null;
+  return {x:sx/sw/w,y:sy/sw/h};
+}
+function drawOverlay(){
+  if(!measuring){ovSvg.innerHTML="";return;}
+  let el="";
+  if(showGrid){
+    el+='<line class="g-line" x1="33.33" y1="0" x2="33.33" y2="100"/><line class="g-line" x1="66.66" y1="0" x2="66.66" y2="100"/><line class="g-line" x1="0" y1="33.33" x2="100" y2="33.33"/><line class="g-line" x1="0" y1="66.66" x2="100" y2="66.66"/>';
+    [[33.33,33.33],[66.66,33.33],[33.33,66.66],[66.66,66.66]].forEach(p=>{
+      let on="";if(subjPos){const dx=subjPos.x*100-p[0],dy=subjPos.y*100-p[1];if(Math.sqrt(dx*dx+dy*dy)<8)on=" on";}
+      el+='<circle class="g-pt'+on+'" cx="'+p[0]+'" cy="'+p[1]+'" r="1.3"/>';
+    });
+  }
+  if(showSubj&&subjPos)el+='<circle class="subj" cx="'+(subjPos.x*100)+'" cy="'+(subjPos.y*100)+'" r="4"/>';
+  if(showLevel&&deviceRoll!=null){
+    const ang=Math.max(-30,Math.min(30,deviceRoll)),rad=ang*Math.PI/180,dx=Math.cos(rad)*30,dy=Math.sin(rad)*30,off=Math.abs(ang)>2?" off":"";
+    el+='<line class="horizon'+off+'" x1="'+(50-dx)+'" y1="'+(50-dy)+'" x2="'+(50+dx)+'" y2="'+(50+dy)+'"/>';
+    levelBadge.textContent=Math.abs(ang)<=1?"in bolla":(ang>0?"inclina "+ang.toFixed(0)+"°":"inclina "+Math.abs(ang).toFixed(0)+"°");
+    levelBadge.className="vf-badge"+(Math.abs(ang)>2?" off":"");
+  }
+  ovSvg.innerHTML=el;
+}
+
+/* ============ LOOP ============ */
+let smoothEV=null,lastAnalyze=0;
+let candScene=null,candCount=0,candCond=null,condCount=0;
+const CONF_MIN=.30,STABLE_N=2;
+function loop(){
+  if(!measuring)return;
+  if(!locked&&cam.videoWidth){
+    const vw=cam.videoWidth,vh=cam.videoHeight;
+    readCameraSensors();
+    // luminanza zona misurata
+    let meanL;
+    ctx.drawImage(cam,0,0,vw,vh,0,0,cv.width,cv.height);
+    {
+      const fw=meterMode==="spot"?.22:.5, fh=meterMode==="spot"?.26:.6;
+      const cw=cv.width*fw,ch=cv.height*fh;
+      let cx=spotX*cv.width-cw/2,cy=spotY*cv.height-ch/2;
+      cx=Math.max(0,Math.min(cv.width-cw,cx));cy=Math.max(0,Math.min(cv.height-ch,cy));
+      const dd=ctx.getImageData(cx,cy,cw,ch).data;let s=0;for(let i=0;i<dd.length;i+=4)s+=(0.2126*dd[i]+0.7152*dd[i+1]+0.0722*dd[i+2])/255;
+      meanL=s/(dd.length/4);
+    }
+    // EV: ancora ai sensori reali se ci sono, altrimenti stima
+    let evEst,anchored=false;
+    if(realShutter&&realISO){
+      const N=realF||2.0;
+      evEst=log2(N*N/realShutter)-log2(realISO/100)+log2(Math.max(meanL,.01)/.18);anchored=true;
+    }else{ evEst=11+log2(Math.max(meanL,.01)/.18)*1.7; }
+    smoothEV=smoothEV===null?evEst:smoothEV*.8+evEst*.2;
+    const evScene=Math.round(smoothEV);
+    let idx=EV100.reduce((bi,v,i)=>Math.abs(v-evScene)<Math.abs(EV100[bi]-evScene)?i:bi,0);
+    ev=idx;lightRange.value=idx;
+    document.getElementById("lightLabel").textContent=LIGHTLBL[idx];
+    document.getElementById("evVal").textContent="EV "+EV100[idx];
+    evBadge.textContent="EV "+EV100[idx];
+
+    const now=performance.now();
+    if(now-lastAnalyze>350){
+      lastAnalyze=now;
+      const st=frameStats(vw,vh);
+      histoData=computeHisto();drawHisto();
+      subjPos=detectSubject(vw,vh);
+      if(mlReady){mlClassify();
+        if(mlTopObjects&&mlTopObjects.length){aiState.textContent="vede: "+mlTopObjects.slice(0,2).join(", ");aiState.className="ai on";}
+      }
+      // scena
+      let sRes;
+      if(mlReady&&mlLastScene&&mlLastConf>=.18)sRes={scene:mlLastScene,conf:Math.min(1,.5+mlLastConf),src:"AI"};
+      else{sRes=classifyScene(st,idx);sRes.src="auto";if(EV100[idx]<=4)sRes={scene:"night",conf:.9,src:"luce"};}
+      lastSceneSuggest=sRes;
+      if(autoOn&&!sceneManual){
+        if(sRes.conf>=CONF_MIN&&sRes.scene!==scene){if(candScene===sRes.scene)candCount++;else{candScene=sRes.scene;candCount=1;}if(candCount>=STABLE_N){setSceneAuto(sRes.scene);candCount=0;}}
+        else if(sRes.scene===scene){candScene=null;candCount=0;}
+      }
+      // condizione: AI se disponibile, altrimenti euristica colori
+      const cRes=classifyCond(st);
+      let condTarget;
+      if(mlReady&&mlCondSuggest) condTarget=mlCondSuggest;
+      else condTarget=cRes.conf>=.55?cRes.cond:"normal";
+      if(autoOn&&!condManual){
+        if(condTarget!==cond){if(candCond===condTarget)condCount++;else{candCond=condTarget;condCount=1;}if(condCount>=STABLE_N){setCondAuto(condTarget);condCount=0;}}
+        else{candCond=null;condCount=0;}
+      }
+      render();
+    }
+  }
+  drawOverlay();
+  rafId=requestAnimationFrame(loop);
+}
+let lastSceneSuggest=null;
+
+/* ============ ISTOGRAMMA draw ============ */
+function drawHisto(){
+  const wrap=document.getElementById("histoBox");if(!wrap)return;
+  const w=histoCanvas.width,h=histoCanvas.height;
+  histoCtx.clearRect(0,0,w,h);
+  if(!histoData)return;
+  const {R,G,B}=histoData;let mx=1;for(let i=1;i<255;i++)mx=Math.max(mx,R[i],G[i],B[i]);
+  histoCtx.globalCompositeOperation="lighter";
+  [[R,"rgba(232,103,91,.7)"],[G,"rgba(120,200,140,.7)"],[B,"rgba(111,179,196,.7)"]].forEach(([a,c])=>{
+    histoCtx.fillStyle=c;histoCtx.beginPath();histoCtx.moveTo(0,h);
+    for(let i=0;i<256;i++)histoCtx.lineTo(i/255*w,h-Math.min(h,a[i]/mx*h));
+    histoCtx.lineTo(w,h);histoCtx.closePath();histoCtx.fill();
+  });
+  histoCtx.globalCompositeOperation="source-over";
+  const dst=document.getElementById("histoImg");if(dst)dst.getContext("2d").drawImage(histoCanvas,0,0,dst.width,dst.height);
+  histoAdvice=exposureAdvice();
+  const {Lm,total}=histoData;
+  const clipHi=(Lm[255]+Lm[254])/total,clipLo=(Lm[0]+Lm[1])/total;
+  let msg="",adv="";
+  if(clipHi>.02)msg="Luci bruciate "+(clipHi*100).toFixed(0)+"%";
+  else if(clipLo>.05)msg="Ombre chiuse "+(clipLo*100).toFixed(0)+"%";
+  else msg="Toni ben distribuiti";
+  if(histoAdvice!==0)adv=(histoAdvice>0?"apri ":"chiudi ")+Math.abs(histoAdvice).toFixed(1)+" stop";
+  const mEl=document.getElementById("histoMsg"),aEl=document.getElementById("histoAdv");
+  if(mEl)mEl.textContent=msg;if(aEl)aEl.textContent=adv;
+}
+
+/* ============ SONY card ============ */
+function sonyCard(r){
+  const iso=snap(A6100_ISO,r.iso),t=snap(A6100_SH,r.t),shTxt=fmtShutterSony(t),fTxt=fmtF(r.f);
+  const copyStr="M · "+shTxt+" · "+fTxt+" · ISO "+iso+(r.cc.ec!==0?" · "+(r.cc.ec>0?"+":"")+r.cc.ec+"EV":"");
+  return '<div class="sony"><h3>Per la tua α6100</h3><p class="sub">Valori sui click reali della camera, modalità M.</p>'+
+    '<div class="vals"><div class="v"><div class="l">tempo</div><div class="n">'+shTxt+'</div></div><div class="v"><div class="l">diaframma</div><div class="n">'+fTxt+'</div></div><div class="v"><div class="l">ISO</div><div class="n">'+iso+'</div></div></div>'+
+    '<div class="copy"><span class="s">'+copyStr+'</span><button id="sonyCopy">Copia</button></div></div>';
+}
+
+/* ============ RENDER ============ */
+function render(){
+  const r=solve();
+  // esposizione
+  let realRow="";
+  if(realISO||realShutter){
+    const parts=[];
+    if(realShutter)parts.push('<span><b>'+fmtShutter(nearestShutter(realShutter))+'</b> tempo camera</span>');
+    if(realISO)parts.push('<span>ISO <b>'+realISO+'</b></span>');
+    if(realFocal)parts.push('<span><b>'+realFocal+'mm</b> reale</span>');
+    realRow='<div class="real on">'+parts.join("")+'</div>';
+  }
+  const flags=[];
+  if(r.mode==="astro"){flags.push('<span class="flag good">posa max '+(r.astroMax<1?r.astroMax.toFixed(1):Math.round(r.astroMax))+'s</span>');flags.push('<span class="flag warn">treppiede</span>');}
+  else{
+    if(r.freeze)flags.push('<span class="flag '+(r.freezeMiss?'warn':'good')+'">congela 1/'+Math.round(1/r.freeze)+'s</span>');
+    if(r.needTripod)flags.push('<span class="flag warn">serve appoggio</span>');
+    if(r.isoHigh)flags.push('<span class="flag warn">ISO alto</span>');
+    if(r.blurRisk)flags.push('<span class="flag warn">rischio mosso</span>');
+  }
+  if(r.cc.ec!==0)flags.push('<span class="flag">comp '+(r.cc.ec>0?"+":"")+r.cc.ec+' stop</span>');
+  if(r.lensLimited)flags.push('<span class="flag">obiettivo max '+fmtF(r.f)+'</span>');
+
+  // advice composizione
+  const tips=COMP_TIPS[scene]||COMP_TIPS.general;
+  let liveTips="";
+  // consiglio su misura per cio' che l'AI vede
+  if(mlReady&&mlLastObject){
+    const objTips={
+      "un cane":"Fuoco sull'occhio e scendi al suo livello.",
+      "un gatto":"Fuoco sull'occhio, aspetta lo sguardo in camera.",
+      "un uccello":"Tempo veloce e spazio verso il suo sguardo.",
+      "un fiore":"Sfoca lo sfondo e metti a fuoco il cuore del fiore.",
+      "una farfalla":"Avvicinati piano, scatta nell'attimo di posa.",
+      "una montagna":"Aggiungi un primo piano per dare scala.",
+      "il mare":"Orizzonte dritto, prova una posa lunga per l'acqua.",
+      "una spiaggia":"Attento al controluce, proteggi le alte luci.",
+      "una chiesa":"Tieni le verticali dritte, cerca la simmetria.",
+      "del cibo":"Luce laterale morbida, avvicinati dall'alto o a 45°.",
+      "un piatto":"Luce laterale, sfondo pulito.",
+      "un bicchiere":"Controluce morbido per far brillare il liquido.",
+      "un insetto":"Diaframma chiuso per profondità, fuoco sugli occhi.",
+      "una bici":"Segui il movimento con tempo lento per il mosso creativo.",
+      "una scena sportiva":"Anticipa l'azione, tempo molto rapido.",
+      "una candela":"Esponi per la fiamma, ISO alto, niente flash.",
+      "fuochi d'artificio":"Posa lunga su treppiede, ISO basso.",
+      "alberi":"Cerca la luce che filtra tra le foglie.",
+      "un'auto":"Passaggio con tempo lento per rendere la velocità."
+    };
+    if(objTips[mlLastObject]) liveTips+='<li class="live"><b>Vedo '+mlLastObject+':</b> '+objTips[mlLastObject]+'</li>';
+  }
+  if(subjPos){
+    const centered=Math.abs(subjPos.x-.5)<.1&&Math.abs(subjPos.y-.5)<.1;
+    if(centered)liveTips+='<li class="live"><b>Soggetto centrato:</b> spostalo su un incrocio della griglia.</li>';
+  }
+  if(deviceRoll!=null&&Math.abs(deviceRoll)>2)liveTips+='<li class="live"><b>Raddrizza:</b> stai inclinando di '+Math.abs(deviceRoll).toFixed(0)+'°.</li>';
+
+  out.innerHTML=
+    '<div class="exposure"><div class="triad">'+
+      '<div class="cell"><div class="label">ISO</div><div class="num'+(r.isoHigh?' warn':'')+'">'+r.iso+'</div></div>'+
+      '<div class="cell small"><div class="sep">·</div></div>'+
+      '<div class="cell"><div class="label">tempo</div><div class="num'+((r.blurRisk||r.needTripod||r.freezeMiss)?' warn':'')+'">'+fmtShutter(r.t)+'</div></div>'+
+      '<div class="cell small"><div class="sep">·</div></div>'+
+      '<div class="cell"><div class="label">diaframma</div><div class="num">'+fmtF(r.f)+'</div></div>'+
+    '</div>'+realRow+'</div>'+
+    (flags.length?'<div class="flags">'+flags.join("")+'</div>':'')+
+    '<div class="histo on"><div id="histoBox"><canvas id="histoImg" width="256" height="60"></canvas></div>'+
+      '<div class="scale"><span>ombre</span><span>mezzitoni</span><span>luci</span></div>'+
+      '<div class="verdict"><span class="msg" id="histoMsg">—</span><span class="adv" id="histoAdv"></span></div></div>'+
+    sonyCard(r)+
+    '<div class="advice"><h3>Composizione <span class="scene-tag">'+SCENES[scene].label+'</span></h3><ul>'+liveTips+tips.map(t=>'<li>'+t+'</li>').join("")+'</ul></div>';
+
+  const cb=document.getElementById("sonyCopy");
+  if(cb)cb.onclick=()=>{const t=cb.previousElementSibling.textContent;navigator.clipboard&&navigator.clipboard.writeText(t);cb.textContent="Copiato";setTimeout(()=>cb.textContent="Copia",1200);};
+  if(histoData)drawHisto();
+}
+syncFocal();
+render();
+
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
+</script>
+</body>
+</html>
